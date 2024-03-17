@@ -47,7 +47,7 @@ if location_query:
         st.write("가장 가까운 기록의 정보:")
         st.write(closest_record)
 
-        # Load brand, area, and training data
+        # Load brand and area data
         df_brand = pd.read_csv('brand.csv')
         df_area = pd.read_csv('area.csv')
 
@@ -73,13 +73,38 @@ if location_query:
         prediction = model.predict(data)
         data['EST_AMT_TOT'] = prediction
 
+        # Include brand data columns
         for column in brand_data.columns:
             if column not in data.columns:
                 data[column] = brand_data[column]
 
+        # Extract and compile categories from the one-hot encoded columns
+        one_hot_columns = [col for col in df_brand.columns if 'brand_MCT_RY_NM_' in col or 'brand_OUB_RY_MI_CZ_NM_' in col]
+        def extract_categories(row):
+            categories = [col.split('_')[-1] for col in one_hot_columns if row[col] == 1]
+            return ', '.join(categories)
+        data['category'] = data.apply(extract_categories, axis=1)
+
         # Sort brands by estimated sales amount in descending order
         sorted_brands = data.sort_values(by='EST_AMT_TOT', ascending=False)
-        
-        # Display sorted brands
-        st.write("브랜드 목록 (예상 매출액 순):")
-        st.dataframe(sorted_brands[['brand', 'EST_AMT_TOT']])  # Assuming 'brand_name' is a column in your brand data
+
+        # Streamlit widget for category filtering
+        category_options = ['All'] + sorted(list(set(sum([col.split('_')[-1:] for col in one_hot_columns], []))))
+        selected_category = st.selectbox('업종을 고르세요:', category_options, index=category_options.index('한식') if '한식' in category_options else 0)
+
+        # Filter brands based on selected category
+        if selected_category != 'All':
+            filtered_brands = sorted_brands[sorted_brands['category'].str.contains(selected_category)]
+        else:
+            filtered_brands = sorted_brands
+
+        # Display filtered brands
+        st.write("예상 매출액이 높을 것으로 예측되는 브랜드는 다음과 같습니다:")
+        filtered_brands_display = filtered_brands.rename(columns={
+            'brand': '브랜드',
+            'EST_AMT_TOT': '예상 월 매출액',
+            'category': '업종'
+        })
+
+        # Display the DataFrame with Korean column names
+        st.dataframe(filtered_brands_display[['브랜드', '예상 월 매출액', '업종']])
